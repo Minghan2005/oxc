@@ -907,7 +907,7 @@ impl<'a, C: ParserConfig> GetAstBuilder<'a> for ParserImpl<'a, C> {
 mod test {
     use std::path::Path;
 
-    use oxc_ast::ast::{CommentKind, Expression, Statement};
+    use oxc_ast::ast::{CommentKind, Expression, Statement, TSTypeName};
     use oxc_span::GetSpan;
 
     use super::*;
@@ -961,6 +961,25 @@ mod test {
         let source = "declare module 'test'\n";
         let ret = Parser::new(&allocator, source, source_type).parse();
         assert_eq!(ret.diagnostics.len(), 0);
+    }
+
+    #[test]
+    fn duplicate_interface_extends_preserves_first_clause() {
+        let allocator = Allocator::default();
+        let source_type = SourceType::from_path(Path::new("interface.ts")).unwrap();
+        let ret =
+            Parser::new(&allocator, "interface Duplicate extends A extends B {}", source_type)
+                .parse();
+
+        assert_eq!(ret.diagnostics.len(), 1);
+        let Statement::TSInterfaceDeclaration(interface) = &ret.program.body[0] else {
+            panic!("expected interface declaration");
+        };
+        assert_eq!(interface.extends.len(), 1);
+        let TSTypeName::IdentifierReference(identifier) = &interface.extends[0].expression else {
+            panic!("expected identifier heritage");
+        };
+        assert_eq!(identifier.name, "A");
     }
 
     #[test]

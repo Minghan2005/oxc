@@ -225,7 +225,8 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         loop {
             match self.cur_kind() {
                 Kind::Extends => {
-                    if extends.is_some() {
+                    let duplicate_extends = extends.is_some();
+                    if duplicate_extends {
                         self.error(diagnostics::extends_clause_already_seen(
                             self.cur_token().span(),
                         ));
@@ -235,7 +236,10 @@ impl<'a, C: Config> ParserImpl<'a, C> {
                             implements_span,
                         ));
                     }
-                    extends = Some(self.parse_ts_interface_extends_clause());
+                    let parsed_extends = self.parse_ts_interface_extends_clause();
+                    if !duplicate_extends {
+                        extends = Some(parsed_extends);
+                    }
                 }
                 Kind::Implements => {
                     if let Some((implements_span, _)) = implements {
