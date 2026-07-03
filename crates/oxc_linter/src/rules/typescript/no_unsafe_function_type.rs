@@ -73,7 +73,7 @@ impl Rule for NoUnsafeFunctionType {
                 }
             }
             AstKind::TSInterfaceHeritage(heritage) => {
-                if let TSTypeName::IdentifierReference(ident_ref) = &heritage.expression {
+                if let TSTypeName::IdentifierReference(ident_ref) = &heritage.type_name {
                     handle_function_type(ident_ref, ctx);
                 }
             }

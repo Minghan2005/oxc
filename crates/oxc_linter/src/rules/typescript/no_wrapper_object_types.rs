@@ -77,8 +77,7 @@ impl Rule for NoWrapperObjectTypes {
                 }
             }
             AstKind::TSInterfaceHeritage(ts_interface_heritage) => {
-                if let TSTypeName::IdentifierReference(type_name) =
-                    &ts_interface_heritage.expression
+                if let TSTypeName::IdentifierReference(type_name) = &ts_interface_heritage.type_name
                 {
                     (type_name.name.as_str(), type_name.span, type_name.reference_id())
                 } else {

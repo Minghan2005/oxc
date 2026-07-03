@@ -9,6 +9,8 @@ const textDecoder = new TextDecoder("utf-8", { ignoreBOM: true }),
   { fromCodePoint } = String,
   inspectSymbol = Symbol.for("nodejs.util.inspect.custom");
 
+const convertedIdentifiers = new WeakMap();
+
 function constructTSTypeNameAsMemberExpression(pos, ast) {
   return convertTSTypeNameToMemberExpression(constructTSTypeName(pos, ast));
 }
@@ -17,37 +19,47 @@ export function constructTSQualifiedNameAsMemberExpression(pos, ast) {
   return convertTSTypeNameToMemberExpression(new TSQualifiedName(pos, ast));
 }
 
-function convertTSTypeNameToMemberExpression(expression) {
-  if (expression.type !== "TSQualifiedName") return expression;
+export function constructIdentifierReferenceAsIdentifier(pos, ast) {
+  return convertIdentifierToIdentifier(new IdentifierReference(pos, ast));
+}
 
-  let object = expression.left;
-  const { right } = expression;
-  let previous = (expression = {
-    type: "MemberExpression",
-    object,
-    property: right,
-    optional: false,
-    computed: false,
-    start: expression.start,
-    end: expression.end,
-  });
+export function constructIdentifierNameAsIdentifier(pos, ast) {
+  return convertIdentifierToIdentifier(new IdentifierName(pos, ast));
+}
 
-  while (object.type === "TSQualifiedName") {
-    const { left, right } = object;
-    previous = previous.object = {
-      type: "MemberExpression",
-      object: left,
-      property: right,
-      optional: false,
-      computed: false,
-      start: object.start,
-      end: object.end,
+function convertIdentifierToIdentifier(identifier) {
+  let converted = convertedIdentifiers.get(identifier);
+  if (converted === void 0) {
+    converted = {
+      type: "Identifier",
+      name: identifier.name,
+      start: identifier.start,
+      end: identifier.end,
     };
-
-    object = left;
+    convertedIdentifiers.set(identifier, converted);
   }
+  return converted;
+}
 
-  return expression;
+function convertTSTypeNameToMemberExpression(expression) {
+  switch (expression.type) {
+    case "IdentifierReference":
+      return convertIdentifierToIdentifier(expression);
+    case "ThisExpression":
+      return expression;
+    case "TSQualifiedName":
+      return {
+        type: "MemberExpression",
+        object: convertTSTypeNameToMemberExpression(expression.left),
+        property: convertIdentifierToIdentifier(expression.right),
+        optional: false,
+        computed: false,
+        start: expression.start,
+        end: expression.end,
+      };
+    default:
+      throw new Error(`Unexpected TSTypeName type ${expression.type}`);
+  }
 }
 
 export class Program {

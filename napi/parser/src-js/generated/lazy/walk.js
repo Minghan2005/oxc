@@ -182,18 +182,21 @@ import {
   JSDocNullableType,
   JSDocNonNullableType,
   JSDocUnknownType,
+  constructIdentifierNameAsIdentifier,
+  constructIdentifierReferenceAsIdentifier,
   constructTSQualifiedNameAsMemberExpression,
 } from "./constructors.js";
 import { NODE_TYPE_IDS_MAP } from "./type_ids.js";
 
 export { walkProgram };
 
-const staticMemberExpressionTypeId = NODE_TYPE_IDS_MAP.get("StaticMemberExpression");
+const identifierTypeId = NODE_TYPE_IDS_MAP.get("Identifier"),
+  memberExpressionTypeId = NODE_TYPE_IDS_MAP.get("MemberExpression");
 
 function walkTSTypeNameAsMemberExpression(pos, ast, visitors) {
   switch (ast.buffer[pos]) {
     case 0:
-      walkBoxIdentifierReference(pos + 8, ast, visitors);
+      walkBoxIdentifierReferenceAsIdentifier(pos + 8, ast, visitors);
       return;
     case 1:
       walkBoxTSQualifiedNameAsMemberExpression(pos + 8, ast, visitors);
@@ -210,8 +213,29 @@ function walkBoxTSQualifiedNameAsMemberExpression(pos, ast, visitors) {
   return walkTSQualifiedNameAsMemberExpression(ast.buffer.int32[pos >> 2], ast, visitors);
 }
 
+function walkBoxIdentifierReferenceAsIdentifier(pos, ast, visitors) {
+  return walkIdentifierReferenceAsIdentifier(ast.buffer.int32[pos >> 2], ast, visitors);
+}
+
+function walkIdentifierReferenceAsIdentifier(pos, ast, visitors) {
+  walkIdentifierAsIdentifier(constructIdentifierReferenceAsIdentifier(pos, ast), visitors);
+}
+
+function walkIdentifierNameAsIdentifier(pos, ast, visitors) {
+  walkIdentifierAsIdentifier(constructIdentifierNameAsIdentifier(pos, ast), visitors);
+}
+
+function walkIdentifierAsIdentifier(node, visitors) {
+  const enterExit = visitors[identifierTypeId];
+  if (enterExit === null) return;
+
+  const { enter, exit } = enterExit;
+  if (enter !== null) enter(node);
+  if (exit !== null) exit(node);
+}
+
 function walkTSQualifiedNameAsMemberExpression(pos, ast, visitors) {
-  const enterExit = visitors[staticMemberExpressionTypeId];
+  const enterExit = visitors[memberExpressionTypeId];
   let node,
     enter,
     exit = null;
@@ -222,7 +246,7 @@ function walkTSQualifiedNameAsMemberExpression(pos, ast, visitors) {
   }
 
   walkTSTypeNameAsMemberExpression(pos + 16, ast, visitors);
-  walkIdentifierName(pos + 32, ast, visitors);
+  walkIdentifierNameAsIdentifier(pos + 32, ast, visitors);
 
   if (exit !== null) exit(node);
 }

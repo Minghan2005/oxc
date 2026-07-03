@@ -976,7 +976,7 @@ mod test {
             panic!("expected interface declaration");
         };
         assert_eq!(interface.extends.len(), 1);
-        let TSTypeName::IdentifierReference(identifier) = &interface.extends[0].expression else {
+        let TSTypeName::IdentifierReference(identifier) = &interface.extends[0].type_name else {
             panic!("expected identifier heritage");
         };
         assert_eq!(identifier.name, "A");

@@ -9326,7 +9326,7 @@ impl<'a> AstNode<'a, TSInterfaceHeritage<'a>> {
             .or(Some(self.following_span_start))
             .unwrap_or(0);
         self.allocator.alloc(AstNode {
-            inner: &self.inner.expression,
+            inner: &self.inner.type_name,
             allocator: self.allocator,
             parent: AstNodes::TSInterfaceHeritage(transmute_self(self)),
             following_span_start,

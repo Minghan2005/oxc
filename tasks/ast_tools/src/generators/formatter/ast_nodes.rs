@@ -226,12 +226,7 @@ fn generate_struct_impls(
         };
 
         let field_name = &field.ident();
-        let method_name =
-            if struct_def.name() == "TSInterfaceHeritage" && field.name() == "expression" {
-                quote! { type_name }
-            } else {
-                field.ident()
-            };
+        let method_name = field.ident();
         let field_inner_ty = original_field_type.ty(schema);
 
         let (is_not_ast_node, is_copyable) = match original_field_type {

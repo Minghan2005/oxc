@@ -97,7 +97,7 @@ fn has_one_super_type(decl: &TSInterfaceDeclaration) -> bool {
         _ => return true,
     }
 
-    let expr = &decl.extends[0].expression;
+    let expr = &decl.extends[0].type_name;
     if let TSTypeName::IdentifierReference(identifier) = expr {
         return &identifier.name != "Function";
     }

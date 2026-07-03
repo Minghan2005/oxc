@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { parseSync } from "../src-js/index.js";
+import { experimentalGetLazyVisitor, parseSync } from "../src-js/index.js";
 
 function parseSyncLazy(filename, code, options = null) {
   return parseSync(filename, code, { ...options, experimentalLazy: true });
@@ -50,6 +50,32 @@ it("returns same node objects and node arrays on each access", () => {
   expect(declaration.id).toBe(id);
 
   expect(program.body[0].declarations[0].id).toBe(id);
+});
+
+it("uses the ESTree shape for interface heritage", () => {
+  const result = parseSyncLazy("test.ts", "interface A extends B.C<T> {}");
+  const heritage = result.program.body[0].extends[0];
+
+  expect(heritage.type_name).toBeUndefined();
+  expect(heritage.expression.type).toBe("MemberExpression");
+  expect(heritage.expression.object.type).toBe("Identifier");
+  expect(heritage.expression.property.type).toBe("Identifier");
+
+  const Visitor = experimentalGetLazyVisitor();
+  const visited = [];
+  result.visit(
+    new Visitor({
+      MemberExpression(node) {
+        visited.push(node.type);
+      },
+      Identifier(node) {
+        visited.push(`${node.type}:${node.name}`);
+      },
+    }),
+  );
+  expect(visited).toEqual(["MemberExpression", "Identifier:B", "Identifier:C"]);
+
+  result.dispose();
 });
 
 describe("NodeArray", () => {

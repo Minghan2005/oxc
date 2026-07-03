@@ -385,7 +385,7 @@ impl ESTree for TSClassImplementsExpression<'_, '_> {
 #[estree(
     ts_type = "Expression",
     raw_deser = "
-        let expression = DESER[TSTypeName](POS_OFFSET.expression);
+        let expression = DESER[TSTypeName](POS_OFFSET.type_name);
         if (expression.type === 'TSQualifiedName') {
             let object = expression.left;
             const { right } = expression;
@@ -436,7 +436,7 @@ pub struct TSInterfaceHeritageExpression<'a, 'b>(pub &'b TSInterfaceHeritage<'a>
 impl ESTree for TSInterfaceHeritageExpression<'_, '_> {
     #[inline] // Because it just delegates
     fn serialize<S: Serializer>(&self, serializer: S) {
-        TSTypeNameAsMemberExpression(&self.0.expression).serialize(serializer);
+        TSTypeNameAsMemberExpression(&self.0.type_name).serialize(serializer);
     }
 }
 

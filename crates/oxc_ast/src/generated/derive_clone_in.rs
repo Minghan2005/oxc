@@ -7586,7 +7586,7 @@ impl<'new_alloc> CloneIn<'new_alloc> for TSInterfaceHeritage<'_> {
         TSInterfaceHeritage {
             node_id: Default::default(),
             span: CloneIn::clone_in(&self.span, allocator),
-            expression: CloneIn::clone_in(&self.expression, allocator),
+            type_name: CloneIn::clone_in(&self.type_name, allocator),
             type_arguments: CloneIn::clone_in(&self.type_arguments, allocator),
         }
     }
@@ -7595,7 +7595,7 @@ impl<'new_alloc> CloneIn<'new_alloc> for TSInterfaceHeritage<'_> {
         TSInterfaceHeritage {
             node_id: CloneIn::clone_in_with_semantic_ids(&self.node_id, allocator),
             span: CloneIn::clone_in_with_semantic_ids(&self.span, allocator),
-            expression: CloneIn::clone_in_with_semantic_ids(&self.expression, allocator),
+            type_name: CloneIn::clone_in_with_semantic_ids(&self.type_name, allocator),
             type_arguments: CloneIn::clone_in_with_semantic_ids(&self.type_arguments, allocator),
         }
     }
