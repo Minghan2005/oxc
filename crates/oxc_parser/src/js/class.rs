@@ -273,18 +273,23 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         loop {
             let span = self.start_span();
             let checkpoint = self.checkpoint();
-            let (type_name, type_argument) = if !self
-                .cur_kind()
-                .is_identifier_reference(self.ctx.has_yield(), self.ctx.has_await())
+            let (type_name, type_argument) = if !(self.at(Kind::This)
+                || self
+                    .cur_kind()
+                    .is_identifier_reference(self.ctx.has_yield(), self.ctx.has_await()))
             {
                 (self.parse_invalid_ts_interface_heritage_type_name(span), None)
             } else {
+                let has_this = self.at(Kind::This);
                 let type_name = self.parse_ts_interface_heritage_type_name(span);
                 let type_argument = self.parse_type_arguments_of_type_reference();
                 if matches!(
                     self.cur_kind(),
                     Kind::Comma | Kind::LCurly | Kind::Extends | Kind::Implements | Kind::Eof
                 ) {
+                    if has_this {
+                        self.error(diagnostics::interface_extend(self.end_span(span)));
+                    }
                     (type_name, type_argument)
                 } else {
                     self.rewind(checkpoint);
@@ -313,8 +318,13 @@ impl<'a, C: Config> ParserImpl<'a, C> {
     }
 
     fn parse_ts_interface_heritage_type_name(&mut self, span: u32) -> TSTypeName<'a> {
-        let ident = self.parse_identifier_reference();
-        let left = TSTypeName::new_identifier_reference(ident.span, ident.name, self);
+        let left = if self.at(Kind::This) {
+            self.bump_any();
+            TSTypeName::new_this_expression(self.end_span(span), self)
+        } else {
+            let ident = self.parse_identifier_reference();
+            TSTypeName::new_identifier_reference(ident.span, ident.name, self)
+        };
         if self.at(Kind::Dot) { self.parse_ts_qualified_type_name(span, left) } else { left }
     }
 
