@@ -53,27 +53,37 @@ it("returns same node objects and node arrays on each access", () => {
 });
 
 it("uses the ESTree shape for interface heritage", () => {
-  const result = parseSyncLazy("test.ts", "interface A extends B.C<T> {}");
+  const result = parseSyncLazy("test.ts", "interface A extends B.C.D<T> {}");
   const heritage = result.program.body[0].extends[0];
+  const { expression } = heritage;
 
   expect(heritage.type_name).toBeUndefined();
-  expect(heritage.expression.type).toBe("MemberExpression");
-  expect(heritage.expression.object.type).toBe("Identifier");
-  expect(heritage.expression.property.type).toBe("Identifier");
+  expect(expression.type).toBe("MemberExpression");
+  expect(expression.object.type).toBe("MemberExpression");
+  expect(expression.object.object.type).toBe("Identifier");
+  expect(expression.object.property.type).toBe("Identifier");
+  expect(expression.property.type).toBe("Identifier");
 
   const Visitor = experimentalGetLazyVisitor();
-  const visited = [];
+  const visitedMembers = [];
+  const visitedIdentifiers = [];
   result.visit(
     new Visitor({
       MemberExpression(node) {
-        visited.push(node.type);
+        visitedMembers.push(node);
       },
       Identifier(node) {
-        visited.push(`${node.type}:${node.name}`);
+        visitedIdentifiers.push(node);
       },
     }),
   );
-  expect(visited).toEqual(["MemberExpression", "Identifier:B", "Identifier:C"]);
+  expect(visitedMembers).toHaveLength(2);
+  expect(visitedMembers[0]).toBe(expression);
+  expect(visitedMembers[1]).toBe(expression.object);
+  expect(visitedIdentifiers).toHaveLength(3);
+  expect(visitedIdentifiers[0]).toBe(expression.object.object);
+  expect(visitedIdentifiers[1]).toBe(expression.object.property);
+  expect(visitedIdentifiers[2]).toBe(expression.property);
 
   result.dispose();
 });

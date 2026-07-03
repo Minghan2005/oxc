@@ -9,7 +9,8 @@ const textDecoder = new TextDecoder("utf-8", { ignoreBOM: true }),
   { fromCodePoint } = String,
   inspectSymbol = Symbol.for("nodejs.util.inspect.custom");
 
-const convertedIdentifiers = new WeakMap();
+const convertedIdentifiers = new WeakMap(),
+  convertedQualifiedNames = new WeakMap();
 
 function constructTSTypeNameAsMemberExpression(pos, ast) {
   return convertTSTypeNameToMemberExpression(constructTSTypeName(pos, ast));
@@ -47,16 +48,22 @@ function convertTSTypeNameToMemberExpression(expression) {
       return convertIdentifierToIdentifier(expression);
     case "ThisExpression":
       return expression;
-    case "TSQualifiedName":
-      return {
-        type: "MemberExpression",
-        object: convertTSTypeNameToMemberExpression(expression.left),
-        property: convertIdentifierToIdentifier(expression.right),
-        optional: false,
-        computed: false,
-        start: expression.start,
-        end: expression.end,
-      };
+    case "TSQualifiedName": {
+      let converted = convertedQualifiedNames.get(expression);
+      if (converted === void 0) {
+        converted = {
+          type: "MemberExpression",
+          object: convertTSTypeNameToMemberExpression(expression.left),
+          property: convertIdentifierToIdentifier(expression.right),
+          optional: false,
+          computed: false,
+          start: expression.start,
+          end: expression.end,
+        };
+        convertedQualifiedNames.set(expression, converted);
+      }
+      return converted;
+    }
     default:
       throw new Error(`Unexpected TSTypeName type ${expression.type}`);
   }
