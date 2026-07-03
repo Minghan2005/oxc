@@ -182,9 +182,50 @@ import {
   JSDocNullableType,
   JSDocNonNullableType,
   JSDocUnknownType,
+  constructTSQualifiedNameAsMemberExpression,
 } from "./constructors.js";
+import { NODE_TYPE_IDS_MAP } from "./type_ids.js";
 
 export { walkProgram };
+
+const staticMemberExpressionTypeId = NODE_TYPE_IDS_MAP.get("StaticMemberExpression");
+
+function walkTSTypeNameAsMemberExpression(pos, ast, visitors) {
+  switch (ast.buffer[pos]) {
+    case 0:
+      walkBoxIdentifierReference(pos + 8, ast, visitors);
+      return;
+    case 1:
+      walkBoxTSQualifiedNameAsMemberExpression(pos + 8, ast, visitors);
+      return;
+    case 2:
+      walkBoxThisExpression(pos + 8, ast, visitors);
+      return;
+    default:
+      throw new Error(`Unexpected discriminant ${ast.buffer[pos]} for TSTypeName`);
+  }
+}
+
+function walkBoxTSQualifiedNameAsMemberExpression(pos, ast, visitors) {
+  return walkTSQualifiedNameAsMemberExpression(ast.buffer.int32[pos >> 2], ast, visitors);
+}
+
+function walkTSQualifiedNameAsMemberExpression(pos, ast, visitors) {
+  const enterExit = visitors[staticMemberExpressionTypeId];
+  let node,
+    enter,
+    exit = null;
+  if (enterExit !== null) {
+    ({ enter, exit } = enterExit);
+    node = constructTSQualifiedNameAsMemberExpression(pos, ast);
+    if (enter !== null) enter(node);
+  }
+
+  walkTSTypeNameAsMemberExpression(pos + 16, ast, visitors);
+  walkIdentifierName(pos + 32, ast, visitors);
+
+  if (exit !== null) exit(node);
+}
 
 function walkProgram(pos, ast, visitors) {
   const enterExit = visitors[38];
@@ -4022,7 +4063,7 @@ function walkTSClassImplements(pos, ast, visitors) {
     if (enter !== null) enter(node);
   }
 
-  walkTSTypeName(pos + 16, ast, visitors);
+  walkTSTypeNameAsMemberExpression(pos + 16, ast, visitors);
   walkOptionBoxTSTypeParameterInstantiation(pos + 32, ast, visitors);
 
   if (exit !== null) exit(node);
@@ -4201,7 +4242,7 @@ function walkTSInterfaceHeritage(pos, ast, visitors) {
     if (enter !== null) enter(node);
   }
 
-  walkExpression(pos + 16, ast, visitors);
+  walkTSTypeNameAsMemberExpression(pos + 16, ast, visitors);
   walkOptionBoxTSTypeParameterInstantiation(pos + 32, ast, visitors);
 
   if (exit !== null) exit(node);

@@ -9,6 +9,47 @@ const textDecoder = new TextDecoder("utf-8", { ignoreBOM: true }),
   { fromCodePoint } = String,
   inspectSymbol = Symbol.for("nodejs.util.inspect.custom");
 
+function constructTSTypeNameAsMemberExpression(pos, ast) {
+  return convertTSTypeNameToMemberExpression(constructTSTypeName(pos, ast));
+}
+
+export function constructTSQualifiedNameAsMemberExpression(pos, ast) {
+  return convertTSTypeNameToMemberExpression(new TSQualifiedName(pos, ast));
+}
+
+function convertTSTypeNameToMemberExpression(expression) {
+  if (expression.type !== "TSQualifiedName") return expression;
+
+  let object = expression.left;
+  const { right } = expression;
+  let previous = (expression = {
+    type: "MemberExpression",
+    object,
+    property: right,
+    optional: false,
+    computed: false,
+    start: expression.start,
+    end: expression.end,
+  });
+
+  while (object.type === "TSQualifiedName") {
+    const { left, right } = object;
+    previous = previous.object = {
+      type: "MemberExpression",
+      object: left,
+      property: right,
+      optional: false,
+      computed: false,
+      start: object.start,
+      end: object.end,
+    };
+
+    object = left;
+  }
+
+  return expression;
+}
+
 export class Program {
   type = "Program";
   #internal;
@@ -9624,7 +9665,7 @@ export class TSClassImplements {
     const cached = nodes.get(pos);
     if (cached !== void 0) return cached;
 
-    this.#internal = { pos, ast };
+    this.#internal = { pos, ast, $expression: void 0 };
     nodes.set(pos, this);
   }
 
@@ -9639,8 +9680,13 @@ export class TSClassImplements {
   }
 
   get expression() {
-    const internal = this.#internal;
-    return constructTSTypeName(internal.pos + 16, internal.ast);
+    const internal = this.#internal,
+      cached = internal.$expression;
+    if (cached !== void 0) return cached;
+    return (internal.$expression = constructTSTypeNameAsMemberExpression(
+      internal.pos + 16,
+      internal.ast,
+    ));
   }
 
   get typeArguments() {
@@ -10217,7 +10263,7 @@ export class TSInterfaceHeritage {
     const cached = nodes.get(pos);
     if (cached !== void 0) return cached;
 
-    this.#internal = { pos, ast };
+    this.#internal = { pos, ast, $expression: void 0 };
     nodes.set(pos, this);
   }
 
@@ -10232,8 +10278,13 @@ export class TSInterfaceHeritage {
   }
 
   get expression() {
-    const internal = this.#internal;
-    return constructExpression(internal.pos + 16, internal.ast);
+    const internal = this.#internal,
+      cached = internal.$expression;
+    if (cached !== void 0) return cached;
+    return (internal.$expression = constructTSTypeNameAsMemberExpression(
+      internal.pos + 16,
+      internal.ast,
+    ));
   }
 
   get typeArguments() {

@@ -1,6 +1,6 @@
 use oxc_ast::{
     AstKind,
-    ast::{ExportDefaultDeclarationKind, Expression, TSInterfaceDeclaration, TSSignature, TSType},
+    ast::{ExportDefaultDeclarationKind, TSInterfaceDeclaration, TSSignature, TSType, TSTypeName},
 };
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_macros::declare_oxc_lint;
@@ -98,7 +98,7 @@ fn has_one_super_type(decl: &TSInterfaceDeclaration) -> bool {
     }
 
     let expr = &decl.extends[0].expression;
-    if let Expression::Identifier(identifier) = expr {
+    if let TSTypeName::IdentifierReference(identifier) = expr {
         return &identifier.name != "Function";
     }
 

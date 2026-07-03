@@ -1159,7 +1159,8 @@ pub struct TSIndexSignatureName<'a> {
 pub struct TSInterfaceHeritage<'a> {
     pub node_id: Cell<NodeId>,
     pub span: Span,
-    pub expression: Expression<'a>,
+    #[estree(via = TSInterfaceHeritageExpression)]
+    pub expression: TSTypeName<'a>,
     pub type_arguments: Option<Box<'a, TSTypeParameterInstantiation<'a>>>,
 }
 

@@ -4947,9 +4947,9 @@ unsafe fn walk_ts_interface_heritage<'a, State, Tr: Traverse<'a, State>>(
     let pop_token = ctx.push_stack(Ancestor::TSInterfaceHeritageExpression(
         ancestor::TSInterfaceHeritageWithoutExpression(node, PhantomData),
     ));
-    walk_expression(
+    walk_ts_type_name(
         traverser,
-        (node as *mut u8).add(ancestor::OFFSET_TS_INTERFACE_HERITAGE_EXPRESSION) as *mut Expression,
+        (node as *mut u8).add(ancestor::OFFSET_TS_INTERFACE_HERITAGE_EXPRESSION) as *mut TSTypeName,
         ctx,
     );
     if let Some(field) = &mut *((node as *mut u8)

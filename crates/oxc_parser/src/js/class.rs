@@ -13,6 +13,12 @@ use super::FunctionKind;
 
 type ImplementsWithKeywordSpan<'a> = (Span, ArenaVec<'a, TSClassImplements<'a>>);
 
+struct ClassExtends<'a> {
+    span: Span,
+    expression: Expression<'a>,
+    type_arguments: Option<ArenaBox<'a, TSTypeParameterInstantiation<'a>>>,
+}
+
 /// Section 15.7 Class Definitions
 impl<'a, C: Config> ParserImpl<'a, C> {
     // `start_span` points at the start of all decoractors and `class` keyword.
@@ -91,7 +97,7 @@ impl<'a, C: Config> ParserImpl<'a, C> {
 
         let type_parameters =
             if self.is_ts { self.parse_ts_type_parameters_with_variance() } else { None };
-        let (extends, implements) = self.parse_heritage_clause();
+        let (extends, implements) = self.parse_class_heritage_clause();
         let mut super_class = None;
         let mut super_type_parameters = None;
         if let Some(mut extends) = extends
@@ -129,10 +135,9 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         )
     }
 
-    pub(crate) fn parse_heritage_clause(
+    fn parse_class_heritage_clause(
         &mut self,
-    ) -> (Option<ArenaVec<'a, TSInterfaceHeritage<'a>>>, Option<ImplementsWithKeywordSpan<'a>>)
-    {
+    ) -> (Option<ArenaVec<'a, ClassExtends<'a>>>, Option<ImplementsWithKeywordSpan<'a>>) {
         let mut extends = None;
         let mut implements: Option<(Span, ArenaVec<'a, TSClassImplements<'a>>)> = None;
 
@@ -149,7 +154,7 @@ impl<'a, C: Config> ParserImpl<'a, C> {
                             implements_span,
                         ));
                     }
-                    extends = Some(self.parse_extends_clause());
+                    extends = Some(self.parse_class_extends_clause());
                 }
                 Kind::Implements => {
                     if let Some((implements_span, _)) = implements {
@@ -177,7 +182,7 @@ impl<'a, C: Config> ParserImpl<'a, C> {
 
     /// `ClassHeritage`
     /// extends `LeftHandSideExpression`[?Yield, ?Await]
-    fn parse_extends_clause(&mut self) -> ArenaVec<'a, TSInterfaceHeritage<'a>> {
+    fn parse_class_extends_clause(&mut self) -> ArenaVec<'a, ClassExtends<'a>> {
         self.bump_any(); // bump `extends`
 
         let mut extends = ArenaVec::with_capacity_in(1, self);
@@ -196,12 +201,11 @@ impl<'a, C: Config> ParserImpl<'a, C> {
                 type_argument = self.try_parse_type_arguments();
             }
 
-            extends.push(TSInterfaceHeritage::new(
-                self.end_span(span),
-                extend,
-                type_argument,
-                self,
-            ));
+            extends.push(ClassExtends {
+                span: self.end_span(span),
+                expression: extend,
+                type_arguments: type_argument,
+            });
 
             if !self.eat(Kind::Comma) {
                 break;
@@ -209,6 +213,116 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         }
 
         extends
+    }
+
+    pub(crate) fn parse_ts_interface_heritage_clause(
+        &mut self,
+    ) -> (Option<ArenaVec<'a, TSInterfaceHeritage<'a>>>, Option<ImplementsWithKeywordSpan<'a>>)
+    {
+        let mut extends = None;
+        let mut implements: Option<(Span, ArenaVec<'a, TSClassImplements<'a>>)> = None;
+
+        loop {
+            match self.cur_kind() {
+                Kind::Extends => {
+                    if extends.is_some() {
+                        self.error(diagnostics::extends_clause_already_seen(
+                            self.cur_token().span(),
+                        ));
+                    } else if let Some((implements_span, _)) = implements {
+                        self.error(diagnostics::extends_clause_must_precede_implements(
+                            self.cur_token().span(),
+                            implements_span,
+                        ));
+                    }
+                    extends = Some(self.parse_ts_interface_extends_clause());
+                }
+                Kind::Implements => {
+                    if let Some((implements_span, _)) = implements {
+                        self.error(diagnostics::implements_clause_already_seen(
+                            self.cur_token().span(),
+                            implements_span,
+                        ));
+                    }
+                    let implements_kw_span = self.cur_token().span();
+                    if !self.is_ts {
+                        self.error(diagnostics::implements_clause_in_ts(implements_kw_span));
+                    }
+                    if let Some((_, implements)) = implements.as_mut() {
+                        implements.extend(self.parse_ts_implements_clause());
+                    } else {
+                        implements = Some((implements_kw_span, self.parse_ts_implements_clause()));
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        (extends, implements)
+    }
+
+    fn parse_ts_interface_extends_clause(&mut self) -> ArenaVec<'a, TSInterfaceHeritage<'a>> {
+        let extends_span = self.cur_token().span();
+        self.bump_any(); // bump `extends`
+
+        let mut extends = ArenaVec::with_capacity_in(1, self);
+        if self.at(Kind::LCurly) {
+            self.error(diagnostics::empty_extends_clause(extends_span));
+            return extends;
+        }
+        loop {
+            let span = self.start_span();
+            let checkpoint = self.checkpoint();
+            let (type_name, type_argument) = if !self
+                .cur_kind()
+                .is_identifier_reference(self.ctx.has_yield(), self.ctx.has_await())
+            {
+                (self.parse_invalid_ts_interface_heritage_type_name(span), None)
+            } else {
+                let type_name = self.parse_ts_interface_heritage_type_name(span);
+                let type_argument = self.parse_type_arguments_of_type_reference();
+                if matches!(
+                    self.cur_kind(),
+                    Kind::Comma | Kind::LCurly | Kind::Extends | Kind::Implements | Kind::Eof
+                ) {
+                    (type_name, type_argument)
+                } else {
+                    self.rewind(checkpoint);
+                    (self.parse_invalid_ts_interface_heritage_type_name(span), None)
+                }
+            };
+            extends.push(TSInterfaceHeritage::new(
+                self.end_span(span),
+                type_name,
+                type_argument,
+                self,
+            ));
+
+            if !self.at(Kind::Comma) {
+                break;
+            }
+            let comma_span = self.cur_token().span();
+            self.bump_any();
+            if self.at(Kind::LCurly) {
+                self.error(diagnostics::trailing_comma_not_allowed(comma_span));
+                break;
+            }
+        }
+
+        extends
+    }
+
+    fn parse_ts_interface_heritage_type_name(&mut self, span: u32) -> TSTypeName<'a> {
+        let ident = self.parse_identifier_reference();
+        let left = TSTypeName::new_identifier_reference(ident.span, ident.name, self);
+        if self.at(Kind::Dot) { self.parse_ts_qualified_type_name(span, left) } else { left }
+    }
+
+    fn parse_invalid_ts_interface_heritage_type_name(&mut self, span: u32) -> TSTypeName<'a> {
+        let expression = self.parse_assignment_expression_or_higher();
+        let expression_span = expression.span();
+        self.error(diagnostics::interface_extend(expression_span));
+        TSTypeName::new_this_expression(self.end_span(span), self)
     }
 
     fn parse_class_body(&mut self) -> ArenaBox<'a, ClassBody<'a>> {

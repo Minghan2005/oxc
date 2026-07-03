@@ -15456,7 +15456,7 @@ impl<'a> AstBuilder<'a> {
     pub fn ts_interface_heritage<T1>(
         self,
         span: Span,
-        expression: Expression<'a>,
+        expression: TSTypeName<'a>,
         type_arguments: T1,
     ) -> TSInterfaceHeritage<'a>
     where

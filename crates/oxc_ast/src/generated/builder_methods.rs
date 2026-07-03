@@ -24256,7 +24256,7 @@ impl<'a> TSInterfaceHeritage<'a> {
     #[inline]
     pub fn new<B: GetAstBuilder<'a>, T1>(
         span: Span,
-        expression: Expression<'a>,
+        expression: TSTypeName<'a>,
         type_arguments: T1,
         builder: &B,
     ) -> Self

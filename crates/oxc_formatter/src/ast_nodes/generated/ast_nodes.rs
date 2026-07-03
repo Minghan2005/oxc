@@ -9317,7 +9317,7 @@ impl<'a> AstNode<'a, TSInterfaceHeritage<'a>> {
     }
 
     #[inline]
-    pub fn expression(&self) -> &AstNode<'a, Expression<'a>> {
+    pub fn type_name(&self) -> &AstNode<'a, TSTypeName<'a>> {
         let following_span_start = self
             .inner
             .type_arguments

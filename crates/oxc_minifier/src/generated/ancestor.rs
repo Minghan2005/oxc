@@ -2006,7 +2006,6 @@ impl<'a, 't> Ancestor<'a, 't> {
                 | Self::JSXSpreadAttributeArgument(_)
                 | Self::JSXSpreadChildExpression(_)
                 | Self::TSEnumMemberInitializer(_)
-                | Self::TSInterfaceHeritageExpression(_)
                 | Self::TSAsExpressionExpression(_)
                 | Self::TSSatisfiesExpressionExpression(_)
                 | Self::TSTypeAssertionExpression(_)
@@ -2212,6 +2211,7 @@ impl<'a, 't> Ancestor<'a, 't> {
             Self::TSTypeReferenceTypeName(_)
                 | Self::TSQualifiedNameLeft(_)
                 | Self::TSClassImplementsExpression(_)
+                | Self::TSInterfaceHeritageExpression(_)
         )
     }
 
@@ -16261,10 +16261,10 @@ impl<'a, 't> TSInterfaceHeritageWithoutTypeArguments<'a, 't> {
     }
 
     #[inline]
-    pub fn expression(self) -> &'t Expression<'a> {
+    pub fn expression(self) -> &'t TSTypeName<'a> {
         unsafe {
             &*((self.0 as *const u8).add(OFFSET_TS_INTERFACE_HERITAGE_EXPRESSION)
-                as *const Expression<'a>)
+                as *const TSTypeName<'a>)
         }
     }
 }

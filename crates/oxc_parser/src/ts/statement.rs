@@ -236,7 +236,7 @@ impl<'a, C: Config> ParserImpl<'a, C> {
                 }
             }
         }
-        let (extends, implements) = self.parse_heritage_clause();
+        let (extends, implements) = self.parse_ts_interface_heritage_clause();
         let body = self.parse_ts_interface_body();
         let extends = extends.unwrap_or_else(|| ArenaVec::new_in(self));
         self.verify_modifiers(
@@ -247,14 +247,6 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         );
         if let Some((implements_kw_span, _)) = implements {
             self.error(diagnostics::interface_implements(implements_kw_span));
-        }
-        for extend in &extends {
-            if self.fatal_error.is_some() {
-                break;
-            }
-            if !extend.expression.is_entity_name_expression() {
-                self.error(diagnostics::interface_extend(extend.span));
-            }
         }
         Declaration::new_ts_interface_declaration(
             self.end_span(span),

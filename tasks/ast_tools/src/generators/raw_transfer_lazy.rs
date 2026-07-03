@@ -13,8 +13,8 @@ use crate::{
     },
     output::Output,
     schema::{
-        BoxDef, CellDef, Def, EnumDef, OptionDef, PointerDef, PrimitiveDef, Schema, StructDef,
-        TypeDef, TypeId, VecDef,
+        BoxDef, CellDef, Def, EnumDef, FieldDef, OptionDef, PointerDef, PrimitiveDef, Schema,
+        StructDef, TypeDef, TypeId, VecDef,
         extensions::layout::{GetLayout, GetOffset},
     },
     utils::{format_cow, upper_case_first, write_it},
@@ -167,6 +167,8 @@ fn generate(
             {{ fromCodePoint }} = String,
             inspectSymbol = Symbol.for('nodejs.util.inspect.custom');
 
+        {TS_TYPE_NAME_AS_MEMBER_EXPRESSION_CONSTRUCTOR}
+
         {constructors}
     ");
 
@@ -175,9 +177,14 @@ fn generate(
     let walked_constructor_names = &state.walked_constructor_names;
     #[rustfmt::skip]
     let walkers = format!("
-        import {{ {walked_constructor_names} }} from './constructors.js';
+        import {{ {walked_constructor_names} constructTSQualifiedNameAsMemberExpression }} from './constructors.js';
+        import {{ NODE_TYPE_IDS_MAP }} from './type_ids.js';
 
         export {{ walkProgram }};
+
+        const staticMemberExpressionTypeId = NODE_TYPE_IDS_MAP.get('StaticMemberExpression');
+
+        {TS_TYPE_NAME_AS_MEMBER_EXPRESSION_WALKER}
 
         {walkers}
     ");
@@ -654,9 +661,14 @@ fn generate_struct(
         }
 
         let field_type = field.type_def(schema);
-        let needs_cached_prop = local_cache_types.needs_cached_prop(field_type);
+        let is_ts_type_name_as_member_expression_field =
+            is_ts_type_name_as_member_expression_field(struct_def, field);
+        let needs_cached_prop = local_cache_types.needs_cached_prop(field_type)
+            || is_ts_type_name_as_member_expression_field;
         // `Span`'s `start` and `end` can be loaded as `i32`s
-        let value_fn = if is_span {
+        let value_fn = if is_ts_type_name_as_member_expression_field {
+            "constructTSTypeNameAsMemberExpression".to_string()
+        } else if is_span {
             i32_primitive_def.constructor_name(schema)
         } else {
             field_type.constructor_name(schema)
@@ -696,7 +708,11 @@ fn generate_struct(
 
         // Only walk fields which need to be walked themselves
         if walk_statuses[field_type.id()] == WalkStatus::Walk {
-            let inner_walk_fn_name = field_type.walk_name(schema);
+            let inner_walk_fn_name = if is_ts_type_name_as_member_expression_field {
+                "walkTSTypeNameAsMemberExpression".to_string()
+            } else {
+                field_type.walk_name(schema)
+            };
             let pos = pos_offset(field.offset_64());
             write_it!(walk_stmts, "{inner_walk_fn_name}({pos}, ast, visitors);\n");
         }
@@ -817,6 +833,95 @@ fn generate_struct(
 
     write_it!(state.walked_constructor_names, "{struct_name}, ");
 }
+
+/// `TSInterfaceHeritage::expression` and `TSClassImplements::expression` are stored in the
+/// Rust AST as `TSTypeName`, but ESTree exposes qualified names as `MemberExpression`s.
+fn is_ts_type_name_as_member_expression_field(struct_def: &StructDef, field: &FieldDef) -> bool {
+    matches!(struct_def.name(), "TSInterfaceHeritage" | "TSClassImplements")
+        && field.name() == "expression"
+}
+
+static TS_TYPE_NAME_AS_MEMBER_EXPRESSION_CONSTRUCTOR: &str = "
+    function constructTSTypeNameAsMemberExpression(pos, ast) {
+        return convertTSTypeNameToMemberExpression(constructTSTypeName(pos, ast));
+    }
+
+    export function constructTSQualifiedNameAsMemberExpression(pos, ast) {
+        return convertTSTypeNameToMemberExpression(new TSQualifiedName(pos, ast));
+    }
+
+    function convertTSTypeNameToMemberExpression(expression) {
+        if (expression.type !== 'TSQualifiedName') return expression;
+
+        let object = expression.left;
+        const { right } = expression;
+        let previous = expression = {
+            type: 'MemberExpression',
+            object,
+            property: right,
+            optional: false,
+            computed: false,
+            start: expression.start,
+            end: expression.end,
+        };
+
+        while (object.type === 'TSQualifiedName') {
+            const { left, right } = object;
+            previous = previous.object = {
+                type: 'MemberExpression',
+                object: left,
+                property: right,
+                optional: false,
+                computed: false,
+                start: object.start,
+                end: object.end,
+            };
+
+            object = left;
+        }
+
+        return expression;
+    }
+";
+
+static TS_TYPE_NAME_AS_MEMBER_EXPRESSION_WALKER: &str = "
+    function walkTSTypeNameAsMemberExpression(pos, ast, visitors) {
+        switch (ast.buffer[pos]) {
+            case 0:
+                walkBoxIdentifierReference(pos + 8, ast, visitors);
+                return;
+            case 1:
+                walkBoxTSQualifiedNameAsMemberExpression(pos + 8, ast, visitors);
+                return;
+            case 2:
+                walkBoxThisExpression(pos + 8, ast, visitors);
+                return;
+            default:
+                throw new Error(`Unexpected discriminant ${ast.buffer[pos]} for TSTypeName`);
+        }
+    }
+
+    function walkBoxTSQualifiedNameAsMemberExpression(pos, ast, visitors) {
+        return walkTSQualifiedNameAsMemberExpression(ast.buffer.int32[pos >> 2], ast, visitors);
+    }
+
+    function walkTSQualifiedNameAsMemberExpression(pos, ast, visitors) {
+        const enterExit = visitors[staticMemberExpressionTypeId];
+        let node,
+            enter,
+            exit = null;
+        if (enterExit !== null) {
+            ({ enter, exit } = enterExit);
+            node = constructTSQualifiedNameAsMemberExpression(pos, ast);
+            if (enter !== null) enter(node);
+        }
+
+        walkTSTypeNameAsMemberExpression(pos + 16, ast, visitors);
+        walkIdentifierName(pos + 32, ast, visitors);
+
+        if (exit !== null) exit(node);
+    }
+";
 
 /// Generate construct and walk functions for an enum.
 fn generate_enum(
