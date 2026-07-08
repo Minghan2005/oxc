@@ -18,6 +18,9 @@ pub mod fieldless_enum;
 #[cfg(feature = "inline_string")]
 pub mod inline_string;
 
+#[cfg(feature = "multi_vec")]
+pub mod multi_vec;
+
 #[cfg(feature = "non_null")]
 pub mod non_null;
 
@@ -29,6 +32,9 @@ pub mod slice_iter;
 
 #[cfg(feature = "stack")]
 pub mod stack;
+
+#[cfg(feature = "str")]
+pub mod str;
 
 #[cfg(feature = "string_ext")]
 pub mod string_ext;
