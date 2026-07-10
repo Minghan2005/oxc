@@ -12,7 +12,6 @@ use crate::{
 use super::FunctionKind;
 
 struct ClassExtends<'a> {
-    span: Span,
     expression: Expression<'a>,
     type_arguments: Option<ArenaBox<'a, TSTypeParameterInstantiation<'a>>>,
 }
@@ -105,7 +104,9 @@ impl<'a, C: Config> ParserImpl<'a, C> {
             super_class = Some(first_extends.expression);
             super_type_parameters = first_extends.type_arguments;
             for extend in extends {
-                self.error(diagnostics::classes_can_only_extend_single_class(extend.span));
+                self.error(diagnostics::classes_can_only_extend_single_class(
+                    extend.expression.span(),
+                ));
             }
         }
         let body = self.parse_class_body();
@@ -147,7 +148,6 @@ impl<'a, C: Config> ParserImpl<'a, C> {
 
         let mut extends = ArenaVec::with_capacity_in(1, self);
         loop {
-            let span = self.start_span();
             let mut extend = self.parse_lhs_expression_or_higher();
             if self.fatal_error.is_some() {
                 break;
@@ -161,11 +161,7 @@ impl<'a, C: Config> ParserImpl<'a, C> {
                 type_argument = self.try_parse_type_arguments();
             }
 
-            extends.push(ClassExtends {
-                span: self.end_span(span),
-                expression: extend,
-                type_arguments: type_argument,
-            });
+            extends.push(ClassExtends { expression: extend, type_arguments: type_argument });
 
             if !self.eat(Kind::Comma) {
                 break;
