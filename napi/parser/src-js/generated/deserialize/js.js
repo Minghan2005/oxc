@@ -3613,7 +3613,7 @@ function deserializeTSInterfaceHeritage(pos) {
         start: expression.start,
         end: expression.end,
       });
-    for (; object.type === "TSQualifiedName"; ) {
+    for (; object.type === "TSQualifiedName";) {
       let { left, right } = object;
       previous = previous.object = {
         type: "MemberExpression",

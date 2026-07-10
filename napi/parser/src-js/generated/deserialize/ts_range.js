@@ -4349,7 +4349,7 @@ function deserializeTSInterfaceHeritage(pos) {
         end: (end = expression.end),
         range: [start, end],
       });
-    for (; object.type === "TSQualifiedName"; ) {
+    for (; object.type === "TSQualifiedName";) {
       let { left, right } = object;
       previous = previous.object = {
         type: "MemberExpression",
