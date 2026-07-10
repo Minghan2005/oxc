@@ -11,8 +11,6 @@ use crate::{
 
 use super::FunctionKind;
 
-type ImplementsWithKeywordSpan<'a> = (Span, ArenaVec<'a, TSClassImplements<'a>>);
-
 struct ClassExtends<'a> {
     span: Span,
     expression: Expression<'a>,
@@ -137,47 +135,9 @@ impl<'a, C: Config> ParserImpl<'a, C> {
 
     fn parse_class_heritage_clause(
         &mut self,
-    ) -> (Option<ArenaVec<'a, ClassExtends<'a>>>, Option<ImplementsWithKeywordSpan<'a>>) {
-        let mut extends = None;
-        let mut implements: Option<(Span, ArenaVec<'a, TSClassImplements<'a>>)> = None;
-
-        loop {
-            match self.cur_kind() {
-                Kind::Extends => {
-                    if extends.is_some() {
-                        self.error(diagnostics::extends_clause_already_seen(
-                            self.cur_token().span(),
-                        ));
-                    } else if let Some((implements_span, _)) = implements {
-                        self.error(diagnostics::extends_clause_must_precede_implements(
-                            self.cur_token().span(),
-                            implements_span,
-                        ));
-                    }
-                    extends = Some(self.parse_class_extends_clause());
-                }
-                Kind::Implements => {
-                    if let Some((implements_span, _)) = implements {
-                        self.error(diagnostics::implements_clause_already_seen(
-                            self.cur_token().span(),
-                            implements_span,
-                        ));
-                    }
-                    let implements_kw_span = self.cur_token().span();
-                    if !self.is_ts {
-                        self.error(diagnostics::implements_clause_in_ts(implements_kw_span));
-                    }
-                    if let Some((_, implements)) = implements.as_mut() {
-                        implements.extend(self.parse_ts_implements_clause());
-                    } else {
-                        implements = Some((implements_kw_span, self.parse_ts_implements_clause()));
-                    }
-                }
-                _ => break,
-            }
-        }
-
-        (extends, implements)
+    ) -> (Option<ArenaVec<'a, ClassExtends<'a>>>, Option<(Span, ArenaVec<'a, TSClassImplements<'a>>)>)
+    {
+        self.parse_heritage_clause(Self::parse_class_extends_clause)
     }
 
     /// `ClassHeritage`
@@ -215,11 +175,14 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         extends
     }
 
-    pub(crate) fn parse_ts_interface_heritage_clause(
+    pub(crate) fn parse_heritage_clause<T, F>(
         &mut self,
-    ) -> (Option<ArenaVec<'a, TSInterfaceHeritage<'a>>>, Option<ImplementsWithKeywordSpan<'a>>)
+        mut parse_extends_clause: F,
+    ) -> (Option<ArenaVec<'a, T>>, Option<(Span, ArenaVec<'a, TSClassImplements<'a>>)>)
+    where
+        F: FnMut(&mut Self) -> ArenaVec<'a, T>,
     {
-        let mut extends = None;
+        let mut extends: Option<ArenaVec<'a, T>> = None;
         let mut implements: Option<(Span, ArenaVec<'a, TSClassImplements<'a>>)> = None;
 
         loop {
@@ -236,7 +199,7 @@ impl<'a, C: Config> ParserImpl<'a, C> {
                             implements_span,
                         ));
                     }
-                    let parsed_extends = self.parse_ts_interface_extends_clause();
+                    let parsed_extends = parse_extends_clause(self);
                     if !duplicate_extends {
                         extends = Some(parsed_extends);
                     }
@@ -263,80 +226,6 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         }
 
         (extends, implements)
-    }
-
-    fn parse_ts_interface_extends_clause(&mut self) -> ArenaVec<'a, TSInterfaceHeritage<'a>> {
-        let extends_span = self.cur_token().span();
-        self.bump_any(); // bump `extends`
-
-        let mut extends = ArenaVec::with_capacity_in(1, self);
-        if self.at(Kind::LCurly) {
-            self.error(diagnostics::empty_extends_clause(extends_span));
-            return extends;
-        }
-        loop {
-            let span = self.start_span();
-            let checkpoint = self.checkpoint();
-            let (type_name, type_argument) = if self.at(Kind::This)
-                || self
-                    .cur_kind()
-                    .is_identifier_reference(self.ctx.has_yield(), self.ctx.has_await())
-            {
-                let has_this = self.at(Kind::This);
-                let type_name = self.parse_ts_interface_heritage_type_name(span);
-                let type_argument = self.parse_type_arguments_of_type_reference();
-                if matches!(
-                    self.cur_kind(),
-                    Kind::Comma | Kind::LCurly | Kind::Extends | Kind::Implements | Kind::Eof
-                ) {
-                    if has_this {
-                        self.error(diagnostics::interface_extend(self.end_span(span)));
-                    }
-                    (type_name, type_argument)
-                } else {
-                    self.rewind(checkpoint);
-                    (self.parse_invalid_ts_interface_heritage_type_name(span), None)
-                }
-            } else {
-                (self.parse_invalid_ts_interface_heritage_type_name(span), None)
-            };
-            extends.push(TSInterfaceHeritage::new(
-                self.end_span(span),
-                type_name,
-                type_argument,
-                self,
-            ));
-
-            if !self.at(Kind::Comma) {
-                break;
-            }
-            let comma_span = self.cur_token().span();
-            self.bump_any();
-            if self.at(Kind::LCurly) {
-                self.error(diagnostics::trailing_comma_not_allowed(comma_span));
-                break;
-            }
-        }
-
-        extends
-    }
-
-    fn parse_ts_interface_heritage_type_name(&mut self, span: u32) -> TSTypeName<'a> {
-        let left = if self.at(Kind::This) {
-            self.bump_any();
-            TSTypeName::new_this_expression(self.end_span(span), self)
-        } else {
-            let ident = self.parse_identifier_reference();
-            TSTypeName::new_identifier_reference(ident.span, ident.name, self)
-        };
-        if self.at(Kind::Dot) { self.parse_ts_qualified_type_name(span, left) } else { left }
-    }
-
-    fn parse_invalid_ts_interface_heritage_type_name(&mut self, span: u32) -> TSTypeName<'a> {
-        let expression = self.parse_assignment_expression_or_higher();
-        let expression_span = expression.span();
-        self.error(diagnostics::interface_extend(expression_span));
-        TSTypeName::new_this_expression(self.end_span(span), self)
     }
 
     fn parse_class_body(&mut self) -> ArenaBox<'a, ClassBody<'a>> {
