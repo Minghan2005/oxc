@@ -11,6 +11,8 @@ use crate::{
 
 use super::FunctionKind;
 
+type ImplementsWithKeywordSpan<'a> = (Span, ArenaVec<'a, TSClassImplements<'a>>);
+
 /// Section 15.7 Class Definitions
 impl<'a, C: Config> ParserImpl<'a, C> {
     // `start_span` points at the start of all decoractors and `class` keyword.
@@ -134,7 +136,7 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         Option<
             ArenaVec<'a, (Expression<'a>, Option<ArenaBox<'a, TSTypeParameterInstantiation<'a>>>)>,
         >,
-        Option<(Span, ArenaVec<'a, TSClassImplements<'a>>)>,
+        Option<ImplementsWithKeywordSpan<'a>>,
     ) {
         self.parse_heritage_clause(Self::parse_class_extends_clause)
     }
@@ -175,12 +177,12 @@ impl<'a, C: Config> ParserImpl<'a, C> {
     pub(crate) fn parse_heritage_clause<T, F>(
         &mut self,
         mut parse_extends_clause: F,
-    ) -> (Option<ArenaVec<'a, T>>, Option<(Span, ArenaVec<'a, TSClassImplements<'a>>)>)
+    ) -> (Option<ArenaVec<'a, T>>, Option<ImplementsWithKeywordSpan<'a>>)
     where
         F: FnMut(&mut Self) -> ArenaVec<'a, T>,
     {
         let mut extends: Option<ArenaVec<'a, T>> = None;
-        let mut implements: Option<(Span, ArenaVec<'a, TSClassImplements<'a>>)> = None;
+        let mut implements: Option<ImplementsWithKeywordSpan> = None;
 
         loop {
             match self.cur_kind() {
