@@ -259,6 +259,7 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         )
     }
 
+    #[expect(clippy::type_complexity)]
     fn parse_ts_interface_heritage_clause(
         &mut self,
     ) -> (

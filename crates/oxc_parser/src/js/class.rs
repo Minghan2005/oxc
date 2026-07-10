@@ -11,11 +11,6 @@ use crate::{
 
 use super::FunctionKind;
 
-struct ClassExtends<'a> {
-    expression: Expression<'a>,
-    type_arguments: Option<ArenaBox<'a, TSTypeParameterInstantiation<'a>>>,
-}
-
 /// Section 15.7 Class Definitions
 impl<'a, C: Config> ParserImpl<'a, C> {
     // `start_span` points at the start of all decoractors and `class` keyword.
@@ -100,13 +95,11 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         if let Some(mut extends) = extends
             && !extends.is_empty()
         {
-            let first_extends = extends.remove(0);
-            super_class = Some(first_extends.expression);
-            super_type_parameters = first_extends.type_arguments;
-            for extend in extends {
-                self.error(diagnostics::classes_can_only_extend_single_class(
-                    extend.expression.span(),
-                ));
+            let (expression, type_arguments) = extends.remove(0);
+            super_class = Some(expression);
+            super_type_parameters = type_arguments;
+            for (expression, _type_arguments) in extends {
+                self.error(diagnostics::classes_can_only_extend_single_class(expression.span()));
             }
         }
         let body = self.parse_class_body();
@@ -134,16 +127,24 @@ impl<'a, C: Config> ParserImpl<'a, C> {
         )
     }
 
+    #[expect(clippy::type_complexity)]
     fn parse_class_heritage_clause(
         &mut self,
-    ) -> (Option<ArenaVec<'a, ClassExtends<'a>>>, Option<(Span, ArenaVec<'a, TSClassImplements<'a>>)>)
-    {
+    ) -> (
+        Option<
+            ArenaVec<'a, (Expression<'a>, Option<ArenaBox<'a, TSTypeParameterInstantiation<'a>>>)>,
+        >,
+        Option<(Span, ArenaVec<'a, TSClassImplements<'a>>)>,
+    ) {
         self.parse_heritage_clause(Self::parse_class_extends_clause)
     }
 
     /// `ClassHeritage`
     /// extends `LeftHandSideExpression`[?Yield, ?Await]
-    fn parse_class_extends_clause(&mut self) -> ArenaVec<'a, ClassExtends<'a>> {
+    fn parse_class_extends_clause(
+        &mut self,
+    ) -> ArenaVec<'a, (Expression<'a>, Option<ArenaBox<'a, TSTypeParameterInstantiation<'a>>>)>
+    {
         self.bump_any(); // bump `extends`
 
         let mut extends = ArenaVec::with_capacity_in(1, self);
@@ -161,7 +162,7 @@ impl<'a, C: Config> ParserImpl<'a, C> {
                 type_argument = self.try_parse_type_arguments();
             }
 
-            extends.push(ClassExtends { expression: extend, type_arguments: type_argument });
+            extends.push((extend, type_argument));
 
             if !self.eat(Kind::Comma) {
                 break;
