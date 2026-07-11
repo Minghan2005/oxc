@@ -166,6 +166,12 @@ impl<'a> MinifierState<'a> {
         !self.dce || !self.options.treeshake.property_write_side_effects
     }
 
+    /// Whether the liveness analysis proved this symbol unreachable. Ids
+    /// minted after the last compute are beyond capacity and read as live.
+    pub(crate) fn symbol_is_dead(&self, symbol_id: SymbolId) -> bool {
+        self.dead_symbols.contains(symbol_id.index())
+    }
+
     /// Returns whether the AST was mutated since the last call, and resets.
     /// Read and reset are one operation so the signal cannot be cleared
     /// anywhere except at its single consumption point.

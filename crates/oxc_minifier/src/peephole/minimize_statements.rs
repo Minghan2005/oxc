@@ -490,6 +490,20 @@ impl<'a> PeepholeOptimizations {
                     if Self::remove_unused_expression(&mut init, ctx) {
                         ctx.drop_expression(&init);
                     } else {
+                        // See `symbol_liveness::debug_assert_no_dead_references`:
+                        // residue of a dead-marked declarator must only carry
+                        // live references.
+                        #[cfg(debug_assertions)]
+                        if let BindingPattern::BindingIdentifier(id) = &decl.id
+                            && let Some(symbol_id) = id.symbol_id.get()
+                            && ctx.state.symbol_is_dead(symbol_id)
+                        {
+                            crate::symbol_liveness::debug_assert_no_dead_references(
+                                &init,
+                                ctx.scoping(),
+                                &ctx.state.dead_symbols,
+                            );
+                        }
                         result.push(Statement::new_expression_statement(init.span(), init, ctx));
                     }
                 }

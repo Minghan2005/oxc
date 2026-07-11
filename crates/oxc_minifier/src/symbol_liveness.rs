@@ -1032,3 +1032,41 @@ macro_rules! liveness_collect_hooks {
     };
 }
 pub(crate) use liveness_collect_hooks;
+
+/// Debug backstop for the residue path in `handle_variable_declaration`:
+/// when a DEAD-marked declarator's initializer survives as an expression
+/// statement, none of its references may resolve to a dead-marked symbol.
+/// Residue from a dead-cycle member can only contain references that were
+/// attributed outward as roots (hence live) — candidacy excludes
+/// residue-leaving init kinds precisely so their references are never
+/// deferred. This is the declarator-side twin of the extracts-nothing
+/// `debug_assert` at the class removal site, guarding the one direction a
+/// future pass could silently break: moving an expression that carries a
+/// dead-region reference into a candidate's init. Sound residue exists
+/// (single-use inlining rewrites a dead declarator's init to a live call),
+/// so only dead-REFERENCING residue is a violation.
+#[cfg(debug_assertions)]
+pub fn debug_assert_no_dead_references(
+    expr: &Expression<'_>,
+    scoping: &Scoping,
+    dead_symbols: &BitSet<'_>,
+) {
+    struct Checker<'b, 'c> {
+        scoping: &'b Scoping,
+        dead_symbols: &'b BitSet<'c>,
+    }
+    impl<'a> Visit<'a> for Checker<'_, '_> {
+        fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
+            if let Some(reference_id) = it.reference_id.get()
+                && let Some(symbol_id) = self.scoping.get_reference(reference_id).symbol_id()
+            {
+                debug_assert!(
+                    !self.dead_symbols.contains(symbol_id.index()),
+                    "residue of a dead-marked declarator references dead-marked symbol `{}`",
+                    self.scoping.symbol_name(symbol_id)
+                );
+            }
+        }
+    }
+    Checker { scoping, dead_symbols }.visit_expression(expr);
+}
