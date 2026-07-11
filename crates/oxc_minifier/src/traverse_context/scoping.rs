@@ -28,6 +28,13 @@ pub struct TraverseScoping<'a> {
     current_scope_id: ScopeId,
     current_hoist_scope_id: ScopeId,
     current_block_scope_id: ScopeId,
+    /// Symbols that received a freshly minted bound reference this pass.
+    /// The in-pass liveness collection (`symbol_liveness`) observes nodes at
+    /// their visit moment, so a reference created behind the traversal
+    /// cursor would be invisible to it — the one divergence that could mark
+    /// a live symbol dead. Logging at this single mint choke point and
+    /// force-rooting the log at flush closes it. Cleared every pass.
+    minted_symbols: ArenaVec<'a, SymbolId>,
 }
 
 // Public methods
@@ -294,7 +301,21 @@ impl<'a> TraverseScoping<'a> {
             Reference::new_with_symbol_id(NodeId::DUMMY, symbol_id, self.current_scope_id, flags);
         let reference_id = self.scoping.create_reference(reference);
         self.scoping.add_resolved_reference(symbol_id, reference_id);
+        // Single choke point for bound-reference mints — see the
+        // `minted_symbols` field doc. Unconditional: mints are rare and the
+        // log is drained every flush.
+        self.minted_symbols.push(symbol_id);
         reference_id
+    }
+
+    /// Symbols that received a freshly minted bound reference this pass; see
+    /// the field doc. Consumed by `symbol_liveness::propagate_collected`.
+    pub(crate) fn minted_symbols(&self) -> &[SymbolId] {
+        &self.minted_symbols
+    }
+
+    pub(crate) fn clear_minted_symbols(&mut self) {
+        self.minted_symbols.clear();
     }
 
     /// Create an unbound reference
@@ -355,9 +376,9 @@ impl<'a> TraverseScoping<'a> {
 }
 
 // Methods used internally within crate
-impl TraverseScoping<'_> {
+impl<'a> TraverseScoping<'a> {
     /// Create new `TraverseScoping`
-    pub(super) fn new(scoping: Scoping) -> Self {
+    pub(super) fn new(scoping: Scoping, allocator: &'a Allocator) -> Self {
         Self {
             scoping,
             uid_generator: None,
@@ -365,6 +386,7 @@ impl TraverseScoping<'_> {
             current_scope_id: ScopeId::new(0),
             current_hoist_scope_id: ScopeId::new(0),
             current_block_scope_id: ScopeId::new(0),
+            minted_symbols: ArenaVec::new_in(&allocator),
         }
     }
 

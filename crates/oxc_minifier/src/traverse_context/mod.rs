@@ -664,7 +664,7 @@ impl<'a, State> TraverseCtx<'a, State> {
     /// This function must not be public to maintain soundness of [`TraverseAncestry`].
     pub(crate) fn new(state: State, scoping: Scoping, allocator: &'a Allocator) -> Self {
         let ancestry = TraverseAncestry::new();
-        let scoping = TraverseScoping::new(scoping);
+        let scoping = TraverseScoping::new(scoping, allocator);
         let ast = AstBuilder::new(allocator);
         Self { state, ancestry, scoping, ast }
     }

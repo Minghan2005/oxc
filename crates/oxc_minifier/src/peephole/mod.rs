@@ -30,10 +30,11 @@ use oxc_ast::ast::*;
 
 use crate::{
     ReusableTraverseCtx, Traverse, TraverseCtx, minifier_traverse::traverse_mut_with_ctx,
-    traverse_context::as_direct_eval_call,
+    symbol_liveness, traverse_context::as_direct_eval_call,
 };
 
 pub use self::normalize::{Normalize, NormalizeOptions};
+pub use self::remove_unused_expression::ClassRemovability;
 
 /// Stateless peephole optimizer. The `dce` flag, the `mutated` signal, and
 /// the per-pass `PassDirty` accumulator all live on `MinifierState`.
@@ -394,11 +395,11 @@ impl<'a> PeepholeOptimizations {
     /// references from scoping, refresh direct-eval flags if an `eval(...)`
     /// call was dropped, and re-initialize the accumulator.
     ///
-    /// The `Compressor` driver calls this after `Normalize` (so the
-    /// fixed-point loop starts against already-pruned scoping and
-    /// Normalize's drops cost no extra peephole pass) and after every
-    /// peephole pass.
-    pub(crate) fn flush_pass_dirty(program: &Program<'a>, ctx: &mut TraverseCtx<'a>) {
+    /// [`Self::end_pass`] calls this after `Normalize` (so the fixed-point
+    /// loop starts against already-pruned scoping and Normalize's drops cost
+    /// no extra peephole pass) and after every peephole pass — quiet ones
+    /// included, where every step below is a cheap no-op.
+    fn flush_pass_dirty(program: &Program<'a>, ctx: &mut TraverseCtx<'a>) {
         let had_dead = !ctx.state.dirty.dead_refs.is_empty();
 
         // (1) Resolved references — direct consumption, no walk.
@@ -444,10 +445,23 @@ impl<'a> PeepholeOptimizations {
         }
         ctx.state.dirty.eval_dropped = false;
     }
+
+    /// End-of-pass sequence: flush the dirty accumulator into scoping, then
+    /// consume the pass's liveness collection — which must observe the
+    /// post-flush scoping (its debug ground-truth walk validates against
+    /// it), so fusing the pair makes the ordering structural. Returns
+    /// whether liveness demands another pass (see
+    /// `symbol_liveness::propagate_collected`).
+    pub(crate) fn end_pass(program: &Program<'a>, ctx: &mut TraverseCtx<'a>) -> bool {
+        Self::flush_pass_dirty(program, ctx);
+        symbol_liveness::propagate_collected(program, ctx)
+    }
 }
 
 impl<'a> Traverse<'a> for PeepholeOptimizations {
     fn enter_program(&mut self, program: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+        // Reset the in-pass liveness collection (runs in dce mode too).
+        symbol_liveness::begin_pass(ctx);
         ctx.state.symbol_values.reset();
         // Any module loader (`import`, `export * from`, `export … from`) can, on a
         // cycle, evaluate a foreign module that observes a not-yet-assigned binding
@@ -467,6 +481,8 @@ impl<'a> Traverse<'a> for PeepholeOptimizations {
         // `PassDirty` is managed by the `Compressor` driver via
         // `flush_pass_dirty`, not reset per traversal.
     }
+
+    symbol_liveness::liveness_collect_hooks!();
 
     fn enter_function_body(&mut self, _body: &mut FunctionBody<'a>, ctx: &mut TraverseCtx<'a>) {
         ctx.state.body_unsafe_stack.push((ctx.current_scope_id(), false));
@@ -593,6 +609,7 @@ impl<'a> Traverse<'a> for PeepholeOptimizations {
         decl: &mut VariableDeclarator<'a>,
         ctx: &mut TraverseCtx<'a>,
     ) {
+        symbol_liveness::collect_exit_region(ctx);
         Self::init_symbol_value(decl, ctx);
         // Per-declarator update of the body-unsafe flag. Catches multi-declarator
         // statements (`var [x=call()] = '', flag = true;`, possibly produced by

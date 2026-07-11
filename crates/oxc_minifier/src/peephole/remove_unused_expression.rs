@@ -1077,7 +1077,9 @@ impl<'a> PeepholeOptimizations {
 
     /// How `remove_unused_class` treats an unused class. The classifier is
     /// the single source of truth for its bail-outs; the extraction loop in
-    /// `remove_unused_class` keys off it.
+    /// `remove_unused_class` and the candidacy check in `symbol_liveness`
+    /// (which needs `RemovesClean`: dead-cycle classes must not promote
+    /// references into live code) both key off it.
     pub(crate) fn classify_class_removability(
         c: &Class<'a>,
         ctx: &impl MayHaveSideEffectsContext<'a>,
@@ -1089,8 +1091,14 @@ impl<'a> PeepholeOptimizations {
         }
         if let Some(super_class) = &c.super_class {
             // Unwrap parens and sequence tails — `(0, x)` — so the
-            // classification does not change when a later fold surfaces
-            // the inner expression.
+            // classification cannot flip to `Keep` when a later fold
+            // surfaces the inner expression (a dead-cycle class classified
+            // `RemovesClean` at liveness-compute time must not become
+            // unremovable at its removal site). Other fold families could
+            // still surface one mid-pass; such flips stay sound because a
+            // fold only surfaces a value the original heritage already
+            // evaluated to, so both versions throw the same error before
+            // any reference to a removed cycle member can execute.
             let mut e = super_class.get_inner_expression();
             while let Expression::SequenceExpression(seq) = e {
                 let Some(last) = seq.expressions.last() else { break };
@@ -1173,8 +1181,10 @@ impl<'a> PeepholeOptimizations {
 
     /// Expression kinds the `remove_unused_expression` dispatch above sends
     /// to a specialized handler, which may REDUCE the expression (leaving
-    /// residue) instead of dropping it whole (`ThisExpression` counts as
-    /// specialized: its removal depends on traversal position).
+    /// residue) instead of dropping it whole. The symbol-liveness analysis
+    /// relies on every other pure expression being dropped without residue
+    /// by the generic branch (`ThisExpression` counts as specialized: its
+    /// removal depends on traversal position).
     ///
     /// The dispatch routes through this predicate, so the two cannot drift
     /// silently: a new specialized arm without a predicate entry is dead

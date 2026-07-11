@@ -1,13 +1,17 @@
 use super::PeepholeOptimizations;
-use crate::{CompressOptionsUnused, TraverseCtx};
+use crate::{CompressOptionsUnused, TraverseCtx, symbol_liveness};
 use oxc_ast::ast::*;
 use oxc_ecmascript::constant_evaluation::{DetermineValueType, ValueType};
+use oxc_syntax::scope::ScopeId;
 
 impl<'a> PeepholeOptimizations {
+    /// The global gates are `symbol_liveness::analysis_enabled` — one
+    /// definition shared with the liveness candidacy, so the two cannot
+    /// drift (the gate-mirror invariant; see the `symbol_liveness` module
+    /// doc).
     pub(super) fn can_remove_unused_declarators(ctx: &TraverseCtx<'a>) -> bool {
-        ctx.state.options.unused != CompressOptionsUnused::Keep
+        symbol_liveness::analysis_enabled(ctx.scoping(), &ctx.state.options)
             && !Self::keep_top_level_var_in_script_mode(ctx)
-            && !ctx.scoping().root_scope_flags().contains_direct_eval()
     }
 
     fn is_sync_iterator_expr(expr: &Expression<'a>, ctx: &TraverseCtx<'a>) -> bool {
@@ -148,8 +152,20 @@ impl<'a> PeepholeOptimizations {
 
     /// Do remove top level vars in script mode.
     pub fn keep_top_level_var_in_script_mode(ctx: &TraverseCtx<'a>) -> bool {
-        ctx.scoping.current_scope_id() == ctx.scoping().root_scope_id()
-            && ctx.source_type().is_script()
+        Self::statement_scope_keeps_top_level_var(ctx, ctx.scoping.current_scope_id())
+    }
+
+    /// Scope-parameterized core of the script-root gate, shared with the
+    /// liveness collection's declarator hook — whose removal site (the
+    /// for-init retain in `handle_for_statement`) runs at the scope
+    /// containing the `for` statement, not the declarator's own visitation
+    /// scope. One definition keeps candidacy and removal in lockstep (the
+    /// gate-mirror invariant).
+    pub(crate) fn statement_scope_keeps_top_level_var(
+        ctx: &TraverseCtx<'a>,
+        scope_id: ScopeId,
+    ) -> bool {
+        scope_id == ctx.scoping().root_scope_id() && ctx.source_type().is_script()
     }
 
     /// Remove unused specifiers from import declarations.

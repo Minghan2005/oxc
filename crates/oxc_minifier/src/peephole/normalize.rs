@@ -11,7 +11,7 @@ use oxc_syntax::scope::ScopeFlags;
 use super::PeepholeOptimizations;
 use crate::{
     ReusableTraverseCtx, Traverse, TraverseCtx, minifier_traverse::traverse_mut_with_ctx,
-    symbol_facts::SymbolFact,
+    symbol_facts::SymbolFact, symbol_liveness,
 };
 
 #[derive(Default)]
@@ -52,10 +52,31 @@ impl<'a> Normalize {
 }
 
 impl<'a> Traverse<'a> for Normalize {
+    fn enter_program(&mut self, _node: &mut Program<'a>, ctx: &mut TraverseCtx<'a>) {
+        // Normalize's traversal doubles as the liveness SEEDING pass: it
+        // collects the initial analysis inputs (unfiltered — no previous
+        // candidate set exists yet), replacing a standalone pre-loop walk.
+        // See `symbol_liveness`.
+        symbol_liveness::begin_seeding_pass(ctx);
+    }
+
     fn exit_program(&mut self, node: &mut Program<'a>, _ctx: &mut TraverseCtx<'a>) {
         if self.options.remove_unnecessary_use_strict && node.source_type.is_module() {
             node.directives.drain_filter(|d| d.directive.as_str() == "use strict");
         }
+    }
+
+    // Normalize's mutations during collection only diverge toward-live
+    // (drops were already visited; mints are logged at the choke point and
+    // force-rooted at flush).
+    symbol_liveness::liveness_collect_hooks!();
+
+    fn exit_variable_declarator(
+        &mut self,
+        _decl: &mut VariableDeclarator<'a>,
+        ctx: &mut TraverseCtx<'a>,
+    ) {
+        symbol_liveness::collect_exit_region(ctx);
     }
 
     fn exit_statements(
